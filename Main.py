@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
 import os
+from PIL import Image, ImageTk
 
 class HealthBarWindow:
     def __init__(self):
@@ -9,6 +10,20 @@ class HealthBarWindow:
         self.window.title("Boss Health Bar")
         self.window.geometry("800x600")
         self.window.configure(bg='black')
+        
+        # Background image canvas
+        self.bg_canvas = tk.Canvas(
+            self.window,
+            width=800,
+            height=600,
+            bg='black',
+            highlightthickness=0
+        )
+        self.bg_canvas.place(x=0, y=0)
+        
+        self.bg_image = None
+        self.bg_image_path = None
+        self.bg_photo = None
         
         # Boss name label
         self.name_label = tk.Label(
@@ -18,11 +33,11 @@ class HealthBarWindow:
             fg='#FFD700',
             bg='black'
         )
-        self.name_label.pack(pady=(150, 20))
+        self.name_label.place(x=400, y=150, anchor='center')
         
         # Health bar container
         self.health_frame = tk.Frame(self.window, bg='black')
-        self.health_frame.pack(pady=20)
+        self.health_frame.place(x=400, y=220, anchor='center')
         
         # Health bar background
         self.health_bg = tk.Canvas(
@@ -56,10 +71,37 @@ class HealthBarWindow:
             fg='white',
             bg='black'
         )
-        self.health_text.pack(pady=10)
+        self.health_text.place(x=400, y=270, anchor='center')
         
         self.max_health = 100
         self.current_health = 100
+    
+    def set_background_image(self, image_path):
+        """Set background image for the health bar window"""
+        if image_path and os.path.exists(image_path):
+            try:
+                self.bg_image_path = image_path
+                img = Image.open(image_path)
+                
+                # Resize image to fit window
+                img = img.resize((800, 600), Image.Resampling.LANCZOS)
+                self.bg_photo = ImageTk.PhotoImage(img)
+                
+                self.bg_canvas.delete("all")
+                self.bg_canvas.create_image(0, 0, image=self.bg_photo, anchor='nw')
+                
+                # Make labels semi-transparent by adding background
+                self.name_label.config(bg='')
+                self.health_text.config(bg='')
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load image: {str(e)}")
+        else:
+            # Reset to black background
+            self.bg_image_path = None
+            self.bg_photo = None
+            self.bg_canvas.delete("all")
+            self.name_label.config(bg='black')
+            self.health_text.config(bg='black')
         
     def update_health(self, current, maximum, name):
         self.current_health = current
@@ -67,12 +109,19 @@ class HealthBarWindow:
         self.name_label.config(text=name)
         
         if current <= 0:
-            # Death animation
-            self.window.configure(bg='black')
-            for widget in self.window.winfo_children():
-                widget.pack_forget()
+            # Death animation - go completely black
+            self.bg_canvas.delete("all")
+            self.bg_canvas.config(bg='black')
+            self.name_label.place_forget()
+            self.health_frame.place_forget()
+            self.health_text.place_forget()
             self.window.update()
         else:
+            # Make sure widgets are visible
+            self.name_label.place(x=400, y=150, anchor='center')
+            self.health_frame.place(x=400, y=220, anchor='center')
+            self.health_text.place(x=400, y=270, anchor='center')
+            
             # Update health bar
             percentage = max(0, current / maximum)
             bar_width = 590 * percentage
@@ -167,10 +216,22 @@ class StatsWindow:
         ttk.Button(control_frame, text="Load Monster", command=self.load_monster).grid(row=0, column=2, padx=5)
         ttk.Button(control_frame, text="Reset", command=self.reset_monster).grid(row=0, column=3, padx=5)
         
+        # Background image button
+        ttk.Label(main_frame, text="Background Image:", font=("Arial", 12, "bold")).grid(row=9, column=0, sticky=tk.W, pady=(10, 5))
+        image_button_frame = ttk.Frame(main_frame)
+        image_button_frame.grid(row=10, column=0, columnspan=2, pady=5)
+        
+        ttk.Button(image_button_frame, text="Set Background Image", command=self.set_background_image).grid(row=0, column=0, padx=5)
+        ttk.Button(image_button_frame, text="Clear Background", command=self.clear_background).grid(row=0, column=1, padx=5)
+        
+        self.image_path_label = ttk.Label(main_frame, text="No image set", font=("Arial", 9), foreground="gray")
+        self.image_path_label.grid(row=11, column=0, columnspan=2, pady=5)
+        
         # Data storage
         self.abilities = {}  # {name: [max_uses, current_uses]}
         self.current_health = 0
         self.max_health = 0
+        self.background_image_path = None
         
     def add_ability(self):
         name = self.ability_name_entry.get().strip()
@@ -273,7 +334,8 @@ class StatsWindow:
             'name': self.name_entry.get(),
             'max_health': self.max_health,
             'current_health': self.current_health,
-            'abilities': self.abilities
+            'abilities': self.abilities,
+            'background_image': self.background_image_path
         }
         
         filename = filedialog.asksaveasfilename(
@@ -308,6 +370,16 @@ class StatsWindow:
             self.abilities = data['abilities']
             self.update_abilities_list()
             
+            # Load background image if it exists
+            if 'background_image' in data and data['background_image']:
+                self.background_image_path = data['background_image']
+                self.health_window.set_background_image(self.background_image_path)
+                self.update_image_label()
+            else:
+                self.background_image_path = None
+                self.health_window.set_background_image(None)
+                self.update_image_label()
+            
             name = data['name']
             self.health_window.update_health(self.current_health, self.max_health, name)
             
@@ -324,6 +396,35 @@ class StatsWindow:
         
         name = self.name_entry.get() or "Unknown Monster"
         self.health_window.update_health(self.current_health, self.max_health, name)
+    
+    def set_background_image(self):
+        """Set background image for the health bar display"""
+        filename = filedialog.askopenfilename(
+            title="Select Background Image",
+            filetypes=[
+                ("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if filename:
+            self.background_image_path = filename
+            self.health_window.set_background_image(filename)
+            self.update_image_label()
+    
+    def clear_background(self):
+        """Clear the background image"""
+        self.background_image_path = None
+        self.health_window.set_background_image(None)
+        self.update_image_label()
+    
+    def update_image_label(self):
+        """Update the label showing current background image"""
+        if self.background_image_path:
+            filename = os.path.basename(self.background_image_path)
+            self.image_path_label.config(text=f"Image: {filename}", foreground="green")
+        else:
+            self.image_path_label.config(text="No image set", foreground="gray")
 
 if __name__ == "__main__":
     root = tk.Tk()
